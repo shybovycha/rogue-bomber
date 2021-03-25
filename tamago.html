@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tamago</title>
+</head>
+<body>
+  <canvas id="tamago"></canvas>
+
+  <script>
+    const canvas = document.querySelector('canvas#tamago');
+
+    const ctx = canvas.getContext('2d');
+
+    const TILE_HEIGHT = 16;
+    ctx.font = `${TILE_HEIGHT}px courier new`;
+    const TILE_WIDTH = ctx.measureText('X').width;
+
+    // const tileset = new Image();
+    // tileset.src = '';
+
+    const loading = new Promise((resolve, reject) => {
+      // tileset.onload = () => resolve();
+
+      resolve();
+    });
+
+    loading.then(() => {
+      initInput();
+      initAI();
+    });
+
+    // const BLANK = 0;
+    // const PERMANENT_WALL = 1;
+    // const DESTRUCTIBLE_WALL = 2;
+    // const PLAYER = 3;
+
+    const level = [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ];
+
+    const EMPTY_SLOTS = level.map(row => row.filter(cell => cell === 0).length).reduce((acc, n) => acc + n, 0);
+
+    const COL_PADDING = 0;
+    const ROW_PADDING = -1;
+
+    const width = (TILE_WIDTH + COL_PADDING) * level[0].length;
+    const height = (TILE_HEIGHT + ROW_PADDING) * (level.length + 1);
+
+    canvas.style.width = `${width * 4}px`;
+    canvas.style.height = `${height * 4}px`;
+
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+
+    const player = {
+      position: {
+        x: 1,
+        y: 1,
+      },
+      attributes: {
+        hp: 3,
+        speed: 1,
+        bombs: 3,
+      },
+    };
+
+    const bombs = [];
+    const bonuses = [];
+    const enemies = [];
+
+    const nextLevel = () => {
+      // clear level
+      for (let i = 0; i < level.length; ++i) {
+        for (let t = 0; t < level[i].length; ++t) {
+          if (level[i][t] === 1) {
+            continue;
+          }
+
+          level[i][t] = 0;
+        }
+      }
+
+      const walls = Math.floor(EMPTY_SLOTS / 3) + (Math.floor(Math.random() * 100) % (EMPTY_SLOTS / 3));
+
+      let i = 0;
+
+      while (i < walls) {
+        const x = Math.floor(Math.random() * 100) % level.length;
+        const y = Math.floor(Math.random() * 100) % level[0].length;
+
+        // permanent walls must not be touched
+        if (level[x][y] == 1) {
+          continue;
+        }
+
+        // player starting positions must be clear
+        if ((x == 1 && y == 1) || (x == 2 && y == 1) || (x == 1 && y == 2)) {
+          continue;
+        }
+
+        level[x][y] = 2;
+        ++i;
+      }
+    };
+
+    const movePlayer = (dx, dy) => {
+      // check for collisions
+      const newPosition = { ...player.position };
+
+      newPosition.x += dx;
+      newPosition.y += dy;
+
+      if (level[newPosition.x][newPosition.y] > 0) {
+        return;
+      }
+
+      if (bombs.find(({ position: { x, y } }) => x === newPosition.x && y === newPosition.y)) {
+        return;
+      }
+
+      player.position = newPosition;
+    };
+
+    const initInput = () => {
+      document.addEventListener('keydown', (e) => {
+        // console.log('keypress', e);
+
+        const keyCodes = {
+          72: () => movePlayer(0, -1),
+          74: () => movePlayer(1, 0),
+          75: () => movePlayer(-1, 0),
+          76: () => movePlayer(0, 1),
+        };
+
+        const fn = keyCodes[e.keyCode];
+
+        if (fn) {
+          fn.call(null);
+          render();
+        }
+      });
+    };
+
+    const initAI = () => {
+      setInterval(updateAI, 200);
+    };
+
+    const updateAI = () => {};
+
+    const renderTile = (x, y, tile) => {
+      const characters = {
+        0: '.',
+        1: '#',
+        2: '▒', // '░'
+        3: '@',
+      };
+
+      ctx.font = `${TILE_HEIGHT}px courier new`;
+      ctx.clearRect(y * (TILE_WIDTH + COL_PADDING), (x) * (TILE_HEIGHT + ROW_PADDING), (TILE_WIDTH + COL_PADDING), (TILE_HEIGHT + ROW_PADDING));
+      ctx.fillText(characters[tile], y * (TILE_WIDTH + COL_PADDING), (x + 1) * (TILE_HEIGHT + ROW_PADDING));
+    };
+
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // renderLevel();
+      for (let i = 0; i < level.length; ++i) {
+        for (let t = 0; t < level[i].length; ++t) {
+          renderTile(i, t, level[i][t]);
+        }
+      }
+
+      renderTile(player.position.x, player.position.y, 3);
+
+      // renderBonuses();
+      // renderBombs();
+      // renderEnemies();
+
+      // renderPlayer();
+    };
+
+    nextLevel();
+    render();
+  </script>
+</body>
+</html>
