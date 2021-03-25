@@ -18,6 +18,8 @@
     ctx.font = `${TILE_HEIGHT}px courier new`;
     const TILE_WIDTH = ctx.measureText('X').width;
 
+    const UI_WIDTH = TILE_WIDTH * 30;
+
     const TILE_EMPTY = Symbol(0);
     const TILE_PERMANENT_WALL = Symbol(1);
     const TILE_BRICK_WALL = Symbol(2);
@@ -96,7 +98,7 @@
     const COL_PADDING = 0;
     const ROW_PADDING = -1;
 
-    const width = (TILE_WIDTH + COL_PADDING) * LEVEL_COLS;
+    const width = (TILE_WIDTH + COL_PADDING) * LEVEL_COLS + UI_WIDTH;
     const height = (TILE_HEIGHT + ROW_PADDING) * (LEVEL_ROWS + 1);
 
     canvas.style.width = `${width}px`;
@@ -623,6 +625,25 @@
       });
     };
 
+    const renderUI = () => {
+      ctx.font = `${TILE_HEIGHT}px courier new`;
+      ctx.fillStyle = '#000';
+
+      const strings = [
+        `${TILES[BONUS_BOMB1][0]} x ${player.attributes.bombs}`,
+        `${TILES[BONUS_FIRE1][0]} x ${player.attributes.fires}`,
+        `${TILES[BONUS_LIFE1][0]} x ${player.attributes.hp}`,
+        `-----------`,
+        `h/l - left/right`,
+        `j/k - down/up`,
+        `space - place bomb`,
+      ];
+
+      for (let i = 0; i < strings.length; ++i) {
+        ctx.fillText(strings[i], (level[0].length + 3) * TILE_WIDTH, TILE_HEIGHT * (2 + i));
+      }
+    };
+
     const renderTile = (x, y, tile) => {
       const [ char, style ] = TILES[tile];
 
@@ -637,7 +658,7 @@
       ctx.clearRect(0, 0, width, height);
 
       if (player.attributes.hp < 1) {
-        const fontSize = 14;
+        const fontSize = TILE_HEIGHT * 2;
         ctx.fillStyle = 'black';
         ctx.font = `${fontSize}px arial`;
         const text = 'GAME OVER';
@@ -663,6 +684,8 @@
           renderTile(x, y, type);
         }
       }
+
+      renderUI();
     };
 
     generateLevel(LEVEL_ROWS, LEVEL_COLS);
