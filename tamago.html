@@ -29,6 +29,15 @@
     const TILE_NEXT_LEVEL_DOOR1 = Symbol(8);
     const TILE_NEXT_LEVEL_DOOR2 = Symbol(9);
 
+    const BONUS_BOMB1 = Symbol('ò+1');
+    const BONUS_BOMB2 = Symbol('ò+2');
+    const BONUS_FIRE1 = Symbol('!+1');
+    const BONUS_FIRE2 = Symbol('!+2');
+    const BONUS_LIFE1 = Symbol('++1');
+    const BONUS_LIFE2 = Symbol('++2');
+
+    const BONUS_TYPE = [ BONUS_BOMB1, BONUS_FIRE1, BONUS_LIFE1 ];
+
     const ENEMY_LAMP = Symbol('l');
     const ENEMY_BOAR = Symbol('b');
     const ENEMY_BROOM = Symbol('B');
@@ -51,7 +60,13 @@
       [ENEMY_LAMP]: ['l', '#fbc546'], // enemy: lamp
       [ENEMY_BOAR]: ['b', '#b05d13'], // enemy: boar
       [ENEMY_BROOM]: ['B', '#e8c129'], // enemy: broom
-      [INVINCIBLE_PLAYER]: ['@', '#c7eeea'],
+      [INVINCIBLE_PLAYER]: ['@', '#c7eeea'], // invincible player blink
+      [BONUS_BOMB1]: ['ò', '#0bacac'], // bonus bomb
+      [BONUS_BOMB2]: ['ò', '#2edfdf'], // bonus bomb blink
+      [BONUS_FIRE1]: ['!', '#fbb40c'], // bonus fire
+      [BONUS_FIRE2]: ['!', '#f7c142'], // bonus fire blink
+      [BONUS_LIFE1]: ['+', '#307907'], // bonus life
+      [BONUS_LIFE2]: ['+', '#52d508'], // bonus life blink
     };
 
     const KEY_MOVE_RIGHT = 72; // h
@@ -68,6 +83,10 @@
     const INVINCIBLE_INTERVAL = 200;
 
     const NEXT_LEVEL_DOOR_INTERVAL = 150;
+
+    const BONUS_UPDATE_INTERVAL = 200;
+    const BONUS_START_BLINK_TIME = 3000;
+    const BONUS_EXPIRY_TIME = 5000;
 
     const LEVEL_ROWS = 15;
     const LEVEL_COLS = 11;
@@ -111,7 +130,7 @@
       explosionTimers: new Set(),
     };
 
-    const bonuses = [];
+    const bonuses = new Set();
 
     const enemies = new Set();
 
@@ -257,6 +276,41 @@
       enemies.add(descriptor);
     };
 
+    const createBonus = (x, y, type) => {
+      const descriptor = { position: { x, y }, type, revealed: false };
+
+      const reveal = () => {
+        const t1 = setTimeout(() => {
+          const t2 = setInterval(() => {
+            const blinkType = {
+              [BONUS_FIRE1]: BONUS_FIRE2,
+              [BONUS_FIRE2]: BONUS_FIRE1,
+              [BONUS_BOMB1]: BONUS_BOMB2,
+              [BONUS_BOMB2]: BONUS_FIRE1,
+              [BONUS_LIFE1]: BONUS_LIFE2,
+              [BONUS_LIFE2]: BONUS_LIFE1,
+            };
+
+            renderTile(x, y, blinkType[type]);
+          }, BONUS_UPDATE_INTERVAL);
+
+          descriptor.interval = t2;
+        }, BONUS_START_BLINK_TIME);
+
+        const t3 = setTimeout(() => {
+          destroyBonus(descriptor);
+        }, BONUS_EXPIRY_TIME);
+
+        descriptor.timer1 = t1;
+        descriptor.timer2 = t3;
+        descriptor.revealed = true;
+      };
+
+      descriptor.reveal = reveal;
+
+      bonuses.add(descriptor);
+    };
+
     const generateLevel = (rows, cols) => {
       player.position = { x: 1, y: 1 };
 
@@ -322,9 +376,38 @@
           nextLevelDoor.position = { x, y };
         }
 
+        // optionally, generate a bonus, if there is no existing bonus in this place already
+        if ((Math.floor(Math.random() * 100) % 2) === 0 && !Array.from(bonuses).find(({ position: { x: bx, y: by } }) => x === bx && y === by)) {
+          createBonus(x, y, BONUS_TYPE[Math.floor(Math.random() * 100) % BONUS_TYPE.length]);
+        }
+
         // put the brick wall
         level[x][y] = TILE_BRICK_WALL;
         ++filled;
+      }
+    };
+
+    const destroyBonus = (descriptor) => {
+      const { timer1, timer2, interval, type } = descriptor;
+
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearInterval(interval);
+
+      bonuses.delete(descriptor);
+    };
+
+    const pickUpBonus = (descriptor) => {
+      destroyBonus(descriptor);
+
+      const { type } = descriptor;
+
+      if (type === BONUS_BOMB1 || type === BONUS_BOMB2) {
+        player.attributes.bombs++;
+      } else if (type === BONUS_FIRE1 || type === BONUS_FIRE2) {
+        player.attributes.fires++;
+      } else if (type === BONUS_LIFE1 || type === BONUS_LIFE2) {
+        player.attributes.hp++;
       }
     };
 
@@ -337,6 +420,12 @@
 
       if (Array.from(enemies).find(({ position: { x: ex, y: ey } }) => ex === x && ey === y)) {
         killPlayer();
+      }
+
+      const bonus = Array.from(bonuses).find(({ position: { x: bx, y: by } }) => bx === x && by === y);
+
+      if (bonus) {
+        pickUpBonus(bonus);
       }
 
       const cell = level[x][y];
@@ -410,8 +499,6 @@
       }
 
       for (let { x: cx, y: cy } of explosionFires) {
-        level[cx][cy] = TILE_EXPLOSION;
-
         // kill enemy
         for (let enemyDescriptor of enemies) {
           const { position: { x: ex, y: ey }, interval } = enemyDescriptor;
@@ -426,6 +513,21 @@
         if (player.position.x === cx && player.position.y === cy) {
           killPlayer();
         }
+
+        // reveal or destroy bonus
+        for (let bonusDescriptor of bonuses) {
+          const { position: { x: bx, y: by }, reveal } = bonusDescriptor;
+
+          if (bx === cx && by === cy) {
+            if (level[cx][cy] === TILE_BRICK_WALL) {
+              reveal.call(null);
+            } else {
+              destroyBonus(bonusDescriptor);
+            }
+          }
+        }
+
+        level[cx][cy] = TILE_EXPLOSION;
 
         if (level[cx][cy] === TILE_BOMB1 || level[cx][cy] === TILE_BOMB2) {
           explodeBomb(cx, cy);
@@ -554,6 +656,12 @@
 
       for (const { position: { x, y }, type } of enemies) {
         renderTile(x, y, type);
+      }
+
+      for (const { position: { x, y }, type, revealed } of bonuses) {
+        if (revealed) {
+          renderTile(x, y, type);
+        }
       }
     };
 
