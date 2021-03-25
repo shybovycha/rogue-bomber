@@ -73,11 +73,13 @@
       attributes: {
         hp: 3,
         speed: 1,
-        bombs: 3,
+        bombs: 1,
+        fires: 1,
       },
     };
 
-    const bombs = [];
+    let bombs = 0;
+
     const bonuses = [];
     const enemies = [];
 
@@ -127,22 +129,114 @@
         return;
       }
 
-      if (bombs.find(({ position: { x, y } }) => x === newPosition.x && y === newPosition.y)) {
+      player.position = newPosition;
+    };
+
+    const explodeBomb = (x, y) => {
+      const { fires } = player.attributes;
+
+      --bombs;
+
+      const EXPLOSION_DURATION = 600;
+
+      const explosionFires = [{ x, y }];
+
+      for (let i = x; i > -1 && i > x - 1 - fires && level[i][y] !== 1; --i) {
+        explosionFires.push({ x: i, y });
+
+        if (level[i][y] === 2) {
+          break;
+        }
+      }
+
+      for (let i = x; i < level.length && i < x + 1 + fires && level[i][y] !== 1; ++i) {
+        explosionFires.push({ x: i, y });
+
+        if (level[i][y] === 2) {
+          break;
+        }
+      }
+
+      for (let i = y; i > -1 && i > y - 1 - fires && level[x][i] !== 1; --i) {
+        explosionFires.push({ x, y: i });
+
+        if (level[x][i] === 2) {
+          break;
+        }
+      }
+
+      for (let i = y; i < level[0].length && i < y + 1 + fires && level[x][i] !== 1; ++i) {
+        explosionFires.push({ x, y: i });
+
+        if (level[x][i] === 2) {
+          break;
+        }
+      }
+
+      for (let cell of explosionFires) {
+        level[cell.x][cell.y] = 6;
+
+        if (level[cell.x][cell.y] === 4 || level[cell.x][cell.y] === 4) {
+          explodeBomb(cell.x, cell.y);
+        }
+      }
+
+      render();
+
+      setTimeout(() => {
+        // clear explosion fires
+        for (let cell of explosionFires) {
+          level[cell.x][cell.y] = 0;
+        }
+
+        render();
+      }, EXPLOSION_DURATION);
+    };
+
+    const placeBomb = () => {
+      const { position: { x, y }, attributes: { bombs: maxBombs } } = player;
+
+      if (bombs >= maxBombs) {
         return;
       }
 
-      player.position = newPosition;
+      level[x][y] = 4;
+
+      ++bombs;
+
+      const BOMB_TICK_INTERVAL = 700;
+      const BOMB_TICK_TIME = 4100;
+
+      let state = 4;
+
+      const t1 = setInterval(() => {
+        if (state === 4) {
+          state = 5;
+        } else {
+          state = 4;
+        }
+
+        level[x][y] = state;
+
+        render();
+      }, BOMB_TICK_INTERVAL);
+
+      setTimeout(() => {
+        explodeBomb(x, y);
+        clearInterval(t1);
+      }, BOMB_TICK_TIME);
     };
 
     const initInput = () => {
       document.addEventListener('keydown', (e) => {
-        // console.log('keypress', e);
+        console.log('keypress', e);
 
         const keyCodes = {
           72: () => movePlayer(0, -1),
           74: () => movePlayer(1, 0),
           75: () => movePlayer(-1, 0),
           76: () => movePlayer(0, 1),
+          32: () => placeBomb(),
         };
 
         const fn = keyCodes[e.keyCode];
@@ -162,14 +256,29 @@
 
     const renderTile = (x, y, tile) => {
       const characters = {
-        0: '.',
-        1: '#',
-        2: '▒', // '░'
-        3: '@',
+        0: '.', // empty
+        1: '#', // permanent wall
+        2: '▒', // '░' brick wall
+        3: '@', // player
+        4: 'ó', // bomb
+        5: 'Ó', // bomb
+        6: '*', // explosion
       };
 
-      ctx.font = `${TILE_HEIGHT}px courier new`;
+      const styles = {
+        0: '#b3b3b3', // empty
+        1: '#a2a2a2', // permanent wall
+        2: '#b76014', // '░' brick wall
+        3: '#000', // player
+        4: '#000', // bomb
+        5: '#000', // bomb
+        6: '#ff8920', // explosion
+      };
+
       ctx.clearRect(y * (TILE_WIDTH + COL_PADDING), (x) * (TILE_HEIGHT + ROW_PADDING), (TILE_WIDTH + COL_PADDING), (TILE_HEIGHT + ROW_PADDING));
+
+      ctx.font = `${TILE_HEIGHT}px courier new`;
+      ctx.fillStyle = styles[tile];
       ctx.fillText(characters[tile], y * (TILE_WIDTH + COL_PADDING), (x + 1) * (TILE_HEIGHT + ROW_PADDING));
     };
 
