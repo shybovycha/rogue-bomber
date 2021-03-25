@@ -18,52 +18,27 @@
     ctx.font = `${TILE_HEIGHT}px courier new`;
     const TILE_WIDTH = ctx.measureText('X').width;
 
-    // const tileset = new Image();
-    // tileset.src = '';
-
-    const loading = new Promise((resolve, reject) => {
-      // tileset.onload = () => resolve();
-
-      resolve();
-    });
-
-    loading.then(() => {
-      initInput();
-      initAI();
-    });
-
     // const BLANK = 0;
     // const PERMANENT_WALL = 1;
     // const DESTRUCTIBLE_WALL = 2;
     // const PLAYER = 3;
 
-    const level = [
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    ];
+    const LEVEL_ROWS = 15;
+    const LEVEL_COLS = 11;
 
-    const EMPTY_SLOTS = level.map(row => row.filter(cell => cell === 0).length).reduce((acc, n) => acc + n, 0);
+    const level = [];
 
     const COL_PADDING = 0;
     const ROW_PADDING = -1;
 
-    const width = (TILE_WIDTH + COL_PADDING) * level[0].length;
-    const height = (TILE_HEIGHT + ROW_PADDING) * (level.length + 1);
+    const width = (TILE_WIDTH + COL_PADDING) * LEVEL_COLS;
+    const height = (TILE_HEIGHT + ROW_PADDING) * (LEVEL_ROWS + 1);
 
-    canvas.style.width = `${width * 4}px`;
-    canvas.style.height = `${height * 4}px`;
+    canvas.style.width = `${width * 2}px`;
+    canvas.style.height = `${height * 2}px`;
 
-    canvas.width = width * 2;
-    canvas.height = height * 2;
+    canvas.width = width;
+    canvas.height = height;
 
     const player = {
       position: {
@@ -83,25 +58,31 @@
     const bonuses = [];
     const enemies = [];
 
-    const nextLevel = () => {
+    const generateLevel = (rows, cols) => {
       // clear level
-      for (let i = 0; i < level.length; ++i) {
-        for (let t = 0; t < level[i].length; ++t) {
-          if (level[i][t] === 1) {
+      let emptySlots = 0;
+
+      for (let i = 0; i < rows; ++i) {
+        level[i] = [];
+
+        for (let t = 0; t < cols; ++t) {
+          if (i === 0 || t === 0 || i === rows - 1 || t === cols - 1 || ((i % 2) === 0 && (t % 2) === 0)) {
+            level[i][t] = 1;
             continue;
           }
 
           level[i][t] = 0;
+          ++emptySlots;
         }
       }
 
-      const walls = Math.floor(EMPTY_SLOTS / 3) + (Math.floor(Math.random() * 100) % (EMPTY_SLOTS / 3));
+      const walls = Math.floor(emptySlots / 3) + (Math.floor(Math.random() * 100) % (emptySlots / 3));
 
-      let i = 0;
+      let filled = 0;
 
-      while (i < walls) {
-        const x = Math.floor(Math.random() * 100) % level.length;
-        const y = Math.floor(Math.random() * 100) % level[0].length;
+      while (filled < walls) {
+        const x = Math.floor(Math.random() * 100) % rows;
+        const y = Math.floor(Math.random() * 100) % cols;
 
         // permanent walls must not be touched
         if (level[x][y] == 1) {
@@ -114,7 +95,7 @@
         }
 
         level[x][y] = 2;
-        ++i;
+        ++filled;
       }
     };
 
@@ -255,31 +236,23 @@
     const updateAI = () => {};
 
     const renderTile = (x, y, tile) => {
-      const characters = {
-        0: '.', // empty
-        1: '#', // permanent wall
-        2: '▒', // '░' brick wall
-        3: '@', // player
-        4: 'ó', // bomb
-        5: 'Ó', // bomb
-        6: '*', // explosion
+      const tiles = {
+        0: ['.', '#b3b3b3'], // empty
+        1: ['#', '#a2a2a2'], // permanent wall
+        2: ['▒', '#b76014'], // '░' brick wall
+        3: ['@', '#000'], // player
+        4: ['ó', '#000'], // bomb
+        5: ['Ó', '#000'], // bomb
+        6: ['*', '#ff8920'], // explosion
       };
 
-      const styles = {
-        0: '#b3b3b3', // empty
-        1: '#a2a2a2', // permanent wall
-        2: '#b76014', // '░' brick wall
-        3: '#000', // player
-        4: '#000', // bomb
-        5: '#000', // bomb
-        6: '#ff8920', // explosion
-      };
+      const [ char, style ] = tiles[tile];
 
       ctx.clearRect(y * (TILE_WIDTH + COL_PADDING), (x) * (TILE_HEIGHT + ROW_PADDING), (TILE_WIDTH + COL_PADDING), (TILE_HEIGHT + ROW_PADDING));
 
       ctx.font = `${TILE_HEIGHT}px courier new`;
-      ctx.fillStyle = styles[tile];
-      ctx.fillText(characters[tile], y * (TILE_WIDTH + COL_PADDING), (x + 1) * (TILE_HEIGHT + ROW_PADDING));
+      ctx.fillStyle = style;
+      ctx.fillText(char, y * (TILE_WIDTH + COL_PADDING), (x + 1) * (TILE_HEIGHT + ROW_PADDING));
     };
 
     const render = () => {
@@ -293,15 +266,11 @@
       }
 
       renderTile(player.position.x, player.position.y, 3);
-
-      // renderBonuses();
-      // renderBombs();
-      // renderEnemies();
-
-      // renderPlayer();
     };
 
-    nextLevel();
+    generateLevel(LEVEL_ROWS, LEVEL_COLS);
+    initInput();
+    initAI();
     render();
   </script>
 </body>
