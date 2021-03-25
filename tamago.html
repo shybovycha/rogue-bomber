@@ -366,6 +366,15 @@
       for (let { x: cx, y: cy } of explosionFires) {
         level[cx][cy] = TILE_EXPLOSION;
 
+        for (let enemyDescriptor of enemies) {
+          const { position: { x: ex, y: ey }, interval } = enemyDescriptor;
+
+          if (ex === cx && ey === cy) {
+            clearInterval(enemyDescriptor.interval);
+            enemies.delete(enemyDescriptor);
+          }
+        }
+
         if (level[cx][cy] === TILE_BOMB1 || level[cx][cy] === TILE_BOMB2) {
           explodeBomb(cx, cy);
         }
