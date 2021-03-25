@@ -18,10 +18,25 @@
     ctx.font = `${TILE_HEIGHT}px courier new`;
     const TILE_WIDTH = ctx.measureText('X').width;
 
-    // const BLANK = 0;
-    // const PERMANENT_WALL = 1;
-    // const DESTRUCTIBLE_WALL = 2;
-    // const PLAYER = 3;
+    const TILE_EMPTY = Symbol(0);
+    const TILE_PERMANENT_WALL = Symbol(1);
+    const TILE_BRICK_WALL = Symbol(2);
+    const TILE_PLAYER = Symbol(3);
+    const TILE_BOMB1 = Symbol(4);
+    const TILE_BOMB2 = Symbol(5);
+    const TILE_EXPLOSION = Symbol(6);
+
+    const KEY_MOVE_RIGHT = 72; // h
+    const KEY_MOVE_LEFT = 74; // j
+    const KEY_MOVE_UP = 75; // k
+    const KEY_MOVE_DOWN = 76; // l
+    const KEY_PLACE_BOMB = 32; // space
+
+    const BOMB_TICK_INTERVAL = 700;
+    const BOMB_TICK_TIME = 4100;
+    const EXPLOSION_DURATION = 600;
+
+    const AI_UPDATE_INTERVAL = 100;
 
     const LEVEL_ROWS = 15;
     const LEVEL_COLS = 11;
@@ -67,11 +82,11 @@
 
         for (let t = 0; t < cols; ++t) {
           if (i === 0 || t === 0 || i === rows - 1 || t === cols - 1 || ((i % 2) === 0 && (t % 2) === 0)) {
-            level[i][t] = 1;
+            level[i][t] = TILE_PERMANENT_WALL;
             continue;
           }
 
-          level[i][t] = 0;
+          level[i][t] = TILE_EMPTY;
           ++emptySlots;
         }
       }
@@ -85,7 +100,7 @@
         const y = Math.floor(Math.random() * 100) % cols;
 
         // permanent walls must not be touched
-        if (level[x][y] == 1) {
+        if (level[x][y] == TILE_PERMANENT_WALL) {
           continue;
         }
 
@@ -94,71 +109,89 @@
           continue;
         }
 
-        level[x][y] = 2;
+        level[x][y] = TILE_BRICK_WALL;
         ++filled;
       }
     };
 
     const movePlayer = (dx, dy) => {
       // check for collisions
-      const newPosition = { ...player.position };
+      let { position: { x, y } } = player;
 
-      newPosition.x += dx;
-      newPosition.y += dy;
+      x += dx;
+      y += dy;
 
-      if (level[newPosition.x][newPosition.y] > 0) {
+      const cell = level[x][y];
+
+      if ([ TILE_BRICK_WALL, TILE_PERMANENT_WALL, TILE_BOMB1, TILE_BOMB2 ].includes(cell)) {
         return;
       }
 
-      player.position = newPosition;
+      player.position = { x, y };
     };
 
     const explodeBomb = (x, y) => {
+      const EXPLOSION_STOPPER_TILES = [TILE_BRICK_WALL, TILE_BOMB1, TILE_BOMB2, TILE_EXPLOSION, TILE_PLAYER];
+
       const { fires } = player.attributes;
 
       --bombs;
 
-      const EXPLOSION_DURATION = 600;
-
       const explosionFires = [{ x, y }];
 
-      for (let i = x; i > -1 && i > x - 1 - fires && level[i][y] !== 1; --i) {
+      for (let i = x - 1; i > -1 && i > x - 1 - fires; --i) {
+        if (level[i][y] === TILE_PERMANENT_WALL) {
+          break;
+        }
+
         explosionFires.push({ x: i, y });
 
-        if (level[i][y] === 2) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[i][y])) {
           break;
         }
       }
 
-      for (let i = x; i < level.length && i < x + 1 + fires && level[i][y] !== 1; ++i) {
+      for (let i = x + 1; i < level.length && i < x + 1 + fires; ++i) {
+        if (level[i][y] === TILE_PERMANENT_WALL) {
+          break;
+        }
+
         explosionFires.push({ x: i, y });
 
-        if (level[i][y] === 2) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[i][y])) {
           break;
         }
       }
 
-      for (let i = y; i > -1 && i > y - 1 - fires && level[x][i] !== 1; --i) {
+      for (let i = y - 1; i > -1 && i > y - 1 - fires; --i) {
+        if (level[x][i] === TILE_PERMANENT_WALL) {
+          break;
+        }
+
         explosionFires.push({ x, y: i });
 
-        if (level[x][i] === 2) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[x][i])) {
           break;
         }
       }
 
-      for (let i = y; i < level[0].length && i < y + 1 + fires && level[x][i] !== 1; ++i) {
+      for (let i = y + 1; i < level[0].length && i < y + 1 + fires; ++i) {
+        if (level[x][i] === TILE_PERMANENT_WALL) {
+          break;
+        }
+
         explosionFires.push({ x, y: i });
 
-        if (level[x][i] === 2) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[x][i])) {
           break;
         }
       }
 
-      for (let cell of explosionFires) {
-        level[cell.x][cell.y] = 6;
+      for (let { x: cx, y: cy } of explosionFires) {
+        level[cx][cy] = TILE_EXPLOSION;
 
-        if (level[cell.x][cell.y] === 4 || level[cell.x][cell.y] === 4) {
-          explodeBomb(cell.x, cell.y);
+        if (level[cx][cy] === TILE_BOMB1 || level[cx][cy] === TILE_BOMB2) {
+          explodeBomb(cx, cy);
         }
       }
 
@@ -167,7 +200,7 @@
       setTimeout(() => {
         // clear explosion fires
         for (let cell of explosionFires) {
-          level[cell.x][cell.y] = 0;
+          level[cell.x][cell.y] = TILE_EMPTY;
         }
 
         render();
@@ -181,20 +214,17 @@
         return;
       }
 
-      level[x][y] = 4;
+      level[x][y] = TILE_BOMB1;
 
       ++bombs;
 
-      const BOMB_TICK_INTERVAL = 700;
-      const BOMB_TICK_TIME = 4100;
-
-      let state = 4;
+      let state = TILE_BOMB1;
 
       const t1 = setInterval(() => {
-        if (state === 4) {
-          state = 5;
+        if (state === TILE_BOMB1) {
+          state = TILE_BOMB2;
         } else {
-          state = 4;
+          state = TILE_BOMB1;
         }
 
         level[x][y] = state;
@@ -213,11 +243,11 @@
         console.log('keypress', e);
 
         const keyCodes = {
-          72: () => movePlayer(0, -1),
-          74: () => movePlayer(1, 0),
-          75: () => movePlayer(-1, 0),
-          76: () => movePlayer(0, 1),
-          32: () => placeBomb(),
+          [KEY_MOVE_RIGHT]: () => movePlayer(0, -1),
+          [KEY_MOVE_LEFT]: () => movePlayer(1, 0),
+          [KEY_MOVE_UP]: () => movePlayer(-1, 0),
+          [KEY_MOVE_DOWN]: () => movePlayer(0, 1),
+          [KEY_PLACE_BOMB]: () => placeBomb(),
         };
 
         const fn = keyCodes[e.keyCode];
@@ -230,25 +260,25 @@
     };
 
     const initAI = () => {
-      setInterval(updateAI, 200);
+      setInterval(updateAI, AI_UPDATE_INTERVAL);
     };
 
     const updateAI = () => {};
 
     const renderTile = (x, y, tile) => {
       const tiles = {
-        0: ['.', '#b3b3b3'], // empty
-        1: ['#', '#a2a2a2'], // permanent wall
-        2: ['▒', '#b76014'], // '░' brick wall
-        3: ['@', '#000'], // player
-        4: ['ó', '#000'], // bomb
-        5: ['Ó', '#000'], // bomb
-        6: ['*', '#ff8920'], // explosion
+        [TILE_EMPTY]: ['.', '#b3b3b3'], // empty
+        [TILE_PERMANENT_WALL]: ['#', '#a2a2a2'], // permanent wall
+        [TILE_BRICK_WALL]: ['▒', '#b76014'], // '░' brick wall
+        [TILE_PLAYER]: ['@', '#000'], // player
+        [TILE_BOMB1]: ['ó', '#000'], // bomb
+        [TILE_BOMB2]: ['Ó', '#000'], // bomb
+        [TILE_EXPLOSION]: ['*', '#ff8920'], // explosion
       };
 
       const [ char, style ] = tiles[tile];
 
-      ctx.clearRect(y * (TILE_WIDTH + COL_PADDING), (x) * (TILE_HEIGHT + ROW_PADDING), (TILE_WIDTH + COL_PADDING), (TILE_HEIGHT + ROW_PADDING));
+      ctx.clearRect(y * (TILE_WIDTH + COL_PADDING), x * (TILE_HEIGHT + ROW_PADDING), (TILE_WIDTH + COL_PADDING), (TILE_HEIGHT + ROW_PADDING));
 
       ctx.font = `${TILE_HEIGHT}px courier new`;
       ctx.fillStyle = style;
@@ -265,7 +295,7 @@
         }
       }
 
-      renderTile(player.position.x, player.position.y, 3);
+      renderTile(player.position.x, player.position.y, TILE_PLAYER);
     };
 
     generateLevel(LEVEL_ROWS, LEVEL_COLS);
