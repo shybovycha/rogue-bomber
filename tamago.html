@@ -25,7 +25,9 @@
     const TILE_BOMB1 = Symbol(4);
     const TILE_BOMB2 = Symbol(5);
     const TILE_EXPLOSION = Symbol(6);
-    const TILE_NEXT_LEVEL_DOOR = Symbol(7);
+    const TILE_NEXT_LEVEL_DOOR0 = Symbol(7);
+    const TILE_NEXT_LEVEL_DOOR1 = Symbol(8);
+    const TILE_NEXT_LEVEL_DOOR2 = Symbol(9);
 
     const ENEMY_LAMP = Symbol('l');
     const ENEMY_BOAR = Symbol('b');
@@ -43,7 +45,9 @@
       [TILE_BOMB1]: ['ó', '#000'], // bomb
       [TILE_BOMB2]: ['Ó', '#000'], // bomb
       [TILE_EXPLOSION]: ['*', '#ff8920'], // explosion
-      [TILE_NEXT_LEVEL_DOOR]: ['>', '#2edfdf'], // next level door
+      [TILE_NEXT_LEVEL_DOOR0]: ['>', '#bebebe'], // next level door
+      [TILE_NEXT_LEVEL_DOOR1]: ['>', '#0bacac'], // next level door
+      [TILE_NEXT_LEVEL_DOOR2]: ['>', '#2edfdf'], // next level door
       [ENEMY_LAMP]: ['l', '#fbc546'], // enemy: lamp
       [ENEMY_BOAR]: ['b', '#b05d13'], // enemy: boar
       [ENEMY_BROOM]: ['B', '#e8c129'], // enemy: broom
@@ -62,6 +66,8 @@
 
     const INVINCIBLE_TIMEOUT = 2000;
     const INVINCIBLE_INTERVAL = 200;
+
+    const NEXT_LEVEL_DOOR_INTERVAL = 150;
 
     const LEVEL_ROWS = 15;
     const LEVEL_COLS = 11;
@@ -94,7 +100,9 @@
       },
     };
 
-    const nextLevelDoor = { x: -1, y: -1 };
+    const nextLevelDoor = {
+      position: { x: -1, y: -1 },
+    };
 
     let bombs = {
       timers: new Set(),
@@ -276,8 +284,7 @@
         }
       }
 
-      nextLevelDoor.x = -1;
-      nextLevelDoor.y = -1;
+      nextLevelDoor.position = { x: -1, y: -1 };
 
       const newWalls = Math.floor(emptySlots / 3) + (Math.floor(Math.random() * 100) % (emptySlots / 3));
       const newEnemies = 1 + (Math.floor(Math.random() * 10) % 5);
@@ -310,9 +317,8 @@
         }
 
         // generate exit, if it does not exist yet
-        if (nextLevelDoor.x === -1 || nextLevelDoor.y === -1) {
-          nextLevelDoor.x = x;
-          nextLevelDoor.y = y;
+        if (nextLevelDoor.position.x === -1 || nextLevelDoor.position.y === -1) {
+          nextLevelDoor.position = { x, y };
         }
 
         // put the brick wall
@@ -334,7 +340,7 @@
 
       const cell = level[x][y];
 
-      if (cell === TILE_NEXT_LEVEL_DOOR) {
+      if (cell === TILE_NEXT_LEVEL_DOOR1 || cell === TILE_NEXT_LEVEL_DOOR2) {
         generateLevel(LEVEL_ROWS, LEVEL_COLS);
         render();
         return;
@@ -432,8 +438,22 @@
 
         // clear explosion fires
         for (let { x: cx, y: cy } of explosionFires) {
-          if (cx === nextLevelDoor.x && cy === nextLevelDoor.y) {
-            level[cx][cy] = TILE_NEXT_LEVEL_DOOR;
+          if (cx === nextLevelDoor.position.x && cy === nextLevelDoor.position.y) {
+            level[cx][cy] = TILE_NEXT_LEVEL_DOOR0;
+
+            const t1 = setInterval(() => {
+              if (enemies.size > 0) {
+                return;
+              }
+
+              const state = level[nextLevelDoor.position.x][nextLevelDoor.position.y];
+
+              if (state === TILE_NEXT_LEVEL_DOOR1) {
+                level[nextLevelDoor.position.x][nextLevelDoor.position.y] = TILE_NEXT_LEVEL_DOOR2;
+              } else {
+                level[nextLevelDoor.position.x][nextLevelDoor.position.y] = TILE_NEXT_LEVEL_DOOR1;
+              }
+            }, NEXT_LEVEL_DOOR_INTERVAL);
           } else {
             level[cx][cy] = TILE_EMPTY;
           }
