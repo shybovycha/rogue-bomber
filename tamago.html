@@ -25,6 +25,18 @@
     const TILE_BOMB1 = Symbol(4);
     const TILE_BOMB2 = Symbol(5);
     const TILE_EXPLOSION = Symbol(6);
+    const TILE_NEXT_LEVEL_DOOR = Symbol(7);
+
+    const TILES = {
+      [TILE_EMPTY]: ['.', '#b3b3b3'], // empty
+      [TILE_PERMANENT_WALL]: ['#', '#a2a2a2'], // permanent wall
+      [TILE_BRICK_WALL]: ['▒', '#b76014'], // '░' brick wall
+      [TILE_PLAYER]: ['@', '#000'], // player
+      [TILE_BOMB1]: ['ó', '#000'], // bomb
+      [TILE_BOMB2]: ['Ó', '#000'], // bomb
+      [TILE_EXPLOSION]: ['*', '#ff8920'], // explosion
+      [TILE_NEXT_LEVEL_DOOR]: ['>', '#2edfdf'], // next level door
+    };
 
     const KEY_MOVE_RIGHT = 72; // h
     const KEY_MOVE_LEFT = 74; // j
@@ -63,17 +75,33 @@
       attributes: {
         hp: 3,
         speed: 1,
-        bombs: 1,
+        bombs: 10,
         fires: 1,
       },
     };
 
-    let bombs = 0;
+    const nextLevelDoor = { x: -1, y: -1 };
+
+    let bombs = {
+      timers: new Set(),
+      intervals: new Set(),
+      explosionTimers: new Set(),
+    };
 
     const bonuses = [];
     const enemies = [];
 
     const generateLevel = (rows, cols) => {
+      player.position = { x: 1, y: 1 };
+
+      bombs.timers.forEach(t => clearTimeout(t));
+      bombs.intervals.forEach(t => clearInterval(t));
+      bombs.explosionTimers.forEach(t => clearTimeout(t));
+
+      bombs.timers.clear();
+      bombs.intervals.clear();
+      bombs.explosionTimers.clear();
+
       // clear level
       let emptySlots = 0;
 
@@ -90,6 +118,9 @@
           ++emptySlots;
         }
       }
+
+      nextLevelDoor.x = -1;
+      nextLevelDoor.y = -1;
 
       const walls = Math.floor(emptySlots / 3) + (Math.floor(Math.random() * 100) % (emptySlots / 3));
 
@@ -109,6 +140,11 @@
           continue;
         }
 
+        if (nextLevelDoor.x === -1 || nextLevelDoor.y === -1) {
+          nextLevelDoor.x = x;
+          nextLevelDoor.y = y;
+        }
+
         level[x][y] = TILE_BRICK_WALL;
         ++filled;
       }
@@ -123,6 +159,12 @@
 
       const cell = level[x][y];
 
+      if (cell === TILE_NEXT_LEVEL_DOOR) {
+        generateLevel(LEVEL_ROWS, LEVEL_COLS);
+        render();
+        return;
+      }
+
       if ([ TILE_BRICK_WALL, TILE_PERMANENT_WALL, TILE_BOMB1, TILE_BOMB2 ].includes(cell)) {
         return;
       }
@@ -131,11 +173,9 @@
     };
 
     const explodeBomb = (x, y) => {
-      const EXPLOSION_STOPPER_TILES = [TILE_BRICK_WALL, TILE_BOMB1, TILE_BOMB2, TILE_EXPLOSION, TILE_PLAYER];
+      const EXPLOSION_STOPPER_TILES = [TILE_BRICK_WALL, TILE_BOMB1, TILE_BOMB2, TILE_EXPLOSION];
 
       const { fires } = player.attributes;
-
-      --bombs;
 
       const explosionFires = [{ x, y }];
 
@@ -146,7 +186,7 @@
 
         explosionFires.push({ x: i, y });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[i][y])) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[i][y]) || (player.position.x === i && player.position.y === y)) {
           break;
         }
       }
@@ -158,7 +198,7 @@
 
         explosionFires.push({ x: i, y });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[i][y])) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[i][y]) || (player.position.x === i && player.position.y === y)) {
           break;
         }
       }
@@ -170,7 +210,7 @@
 
         explosionFires.push({ x, y: i });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[x][i])) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[x][i]) || (player.position.x === x && player.position.y === i)) {
           break;
         }
       }
@@ -182,7 +222,7 @@
 
         explosionFires.push({ x, y: i });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[x][i])) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[x][i]) || (player.position.x === x && player.position.y === i)) {
           break;
         }
       }
@@ -197,26 +237,32 @@
 
       render();
 
-      setTimeout(() => {
+      const t2 = setTimeout(() => {
+        bombs.explosionTimers.delete(t2);
+
         // clear explosion fires
-        for (let cell of explosionFires) {
-          level[cell.x][cell.y] = TILE_EMPTY;
+        for (let { x: cx, y: cy } of explosionFires) {
+          if (cx === nextLevelDoor.x && cy === nextLevelDoor.y) {
+            level[cx][cy] = TILE_NEXT_LEVEL_DOOR;
+          } else {
+            level[cx][cy] = TILE_EMPTY;
+          }
         }
 
         render();
       }, EXPLOSION_DURATION);
+
+      bombs.explosionTimers.add(t2);
     };
 
     const placeBomb = () => {
       const { position: { x, y }, attributes: { bombs: maxBombs } } = player;
 
-      if (bombs >= maxBombs) {
+      if (bombs.timers.size >= maxBombs) {
         return;
       }
 
       level[x][y] = TILE_BOMB1;
-
-      ++bombs;
 
       let state = TILE_BOMB1;
 
@@ -232,15 +278,20 @@
         render();
       }, BOMB_TICK_INTERVAL);
 
-      setTimeout(() => {
+      const t2 = setTimeout(() => {
         explodeBomb(x, y);
         clearInterval(t1);
+        bombs.intervals.delete(t1);
+        bombs.timers.delete(t2);
       }, BOMB_TICK_TIME);
+
+      bombs.intervals.add(t1);
+      bombs.timers.add(t2);
     };
 
     const initInput = () => {
       document.addEventListener('keydown', (e) => {
-        console.log('keypress', e);
+        // console.log('keypress', e);
 
         const keyCodes = {
           [KEY_MOVE_RIGHT]: () => movePlayer(0, -1),
@@ -266,17 +317,7 @@
     const updateAI = () => {};
 
     const renderTile = (x, y, tile) => {
-      const tiles = {
-        [TILE_EMPTY]: ['.', '#b3b3b3'], // empty
-        [TILE_PERMANENT_WALL]: ['#', '#a2a2a2'], // permanent wall
-        [TILE_BRICK_WALL]: ['▒', '#b76014'], // '░' brick wall
-        [TILE_PLAYER]: ['@', '#000'], // player
-        [TILE_BOMB1]: ['ó', '#000'], // bomb
-        [TILE_BOMB2]: ['Ó', '#000'], // bomb
-        [TILE_EXPLOSION]: ['*', '#ff8920'], // explosion
-      };
-
-      const [ char, style ] = tiles[tile];
+      const [ char, style ] = TILES[tile];
 
       ctx.clearRect(y * (TILE_WIDTH + COL_PADDING), x * (TILE_HEIGHT + ROW_PADDING), (TILE_WIDTH + COL_PADDING), (TILE_HEIGHT + ROW_PADDING));
 
