@@ -604,25 +604,41 @@
       bombs.timers.add(t2);
     };
 
+    const onKeyDown = (e) => {
+      const keyCodes = {
+        [KEY_MOVE_RIGHT]: () => movePlayer(0, -1),
+        [KEY_MOVE_LEFT]: () => movePlayer(1, 0),
+        [KEY_MOVE_UP]: () => movePlayer(-1, 0),
+        [KEY_MOVE_DOWN]: () => movePlayer(0, 1),
+        [KEY_PLACE_BOMB]: () => placeBomb(),
+      };
+
+      const fn = keyCodes[e.keyCode];
+
+      if (fn) {
+        fn.call(null);
+        render();
+      }
+    };
+
+    const destroyCanvas = () => {
+      canvas.parentElement.removeChild(canvas);
+    };
+
+    const onClick = () => {
+      if (player.attributes.hp <= 0) {
+        uninitInput();
+        destroyCanvas();
+      }
+    };
+
     const initInput = () => {
-      document.addEventListener('keydown', (e) => {
-        // console.log('keypress', e);
+      document.addEventListener('keydown', onKeyDown);
+      canvas.addEventListener('click', onClick);
+    };
 
-        const keyCodes = {
-          [KEY_MOVE_RIGHT]: () => movePlayer(0, -1),
-          [KEY_MOVE_LEFT]: () => movePlayer(1, 0),
-          [KEY_MOVE_UP]: () => movePlayer(-1, 0),
-          [KEY_MOVE_DOWN]: () => movePlayer(0, 1),
-          [KEY_PLACE_BOMB]: () => placeBomb(),
-        };
-
-        const fn = keyCodes[e.keyCode];
-
-        if (fn) {
-          fn.call(null);
-          render();
-        }
-      });
+    const uninitInput = () => {
+      document.removeEventListener('keydown', onKeyDown);
     };
 
     const renderUI = () => {
@@ -654,16 +670,31 @@
       ctx.fillText(char, y * (TILE_WIDTH + COL_PADDING), (x + 1) * (TILE_HEIGHT + ROW_PADDING));
     };
 
+    const renderEndOfGame = () => {
+      const fontSize = TILE_HEIGHT * 2;
+
+      ctx.fillStyle = 'black';
+      ctx.font = `${fontSize}px courier new`;
+
+      const strings = [
+        `GAME OVER`,
+        `---------`,
+        `click to close`,
+      ];
+
+      for (let i = 0; i < strings.length; ++i) {
+        const text = strings[i];
+        const textWidth = ctx.measureText(text).width;
+
+        ctx.fillText(text, (width / 2) - (textWidth / 2), (height / 2) + ((fontSize / 2) * i));
+      }
+    };
+
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
       if (player.attributes.hp < 1) {
-        const fontSize = TILE_HEIGHT * 2;
-        ctx.fillStyle = 'black';
-        ctx.font = `${fontSize}px arial`;
-        const text = 'GAME OVER';
-        const textWidth = ctx.measureText(text).width;
-        ctx.fillText(text, (width / 2) - (textWidth / 2), (height / 2) - (fontSize / 2));
+        renderEndOfGame();
         return;
       }
 
