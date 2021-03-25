@@ -27,6 +27,12 @@
     const TILE_EXPLOSION = Symbol(6);
     const TILE_NEXT_LEVEL_DOOR = Symbol(7);
 
+    const ENEMY_LAMP = Symbol('l');
+    const ENEMY_BOAR = Symbol('b');
+    const ENEMY_BROOM = Symbol('B');
+
+    const ENEMY_TYPE = [ ENEMY_LAMP ]; //, ENEMY_BOAR, ENEMY_BROOM ];
+
     const TILES = {
       [TILE_EMPTY]: ['.', '#b3b3b3'], // empty
       [TILE_PERMANENT_WALL]: ['#', '#a2a2a2'], // permanent wall
@@ -36,6 +42,9 @@
       [TILE_BOMB2]: ['Ó', '#000'], // bomb
       [TILE_EXPLOSION]: ['*', '#ff8920'], // explosion
       [TILE_NEXT_LEVEL_DOOR]: ['>', '#2edfdf'], // next level door
+      [ENEMY_LAMP]: ['l', '#fbc546'], // enemy: lamp
+      [ENEMY_BOAR]: ['b', '#b05d13'], // enemy: boar
+      [ENEMY_BROOM]: ['B', '#e8c129'], // enemy: broom
     };
 
     const KEY_MOVE_RIGHT = 72; // h
@@ -89,7 +98,125 @@
     };
 
     const bonuses = [];
-    const enemies = [];
+
+    const enemies = new Set();
+
+    const ENEMY_UPDATE_SPEED = {
+      [ENEMY_LAMP]: 700,
+      [ENEMY_BOAR]: 200,
+      [ENEMY_BROOM]: 400,
+    };
+
+    const updateLamp = (descriptor) => {
+      // selects random location and goes there; respects all walls
+      const { position: { x: px, y: py }, destination, path } = descriptor;
+
+      if (destination && (px !== destination.x || py !== destination.y) && path.length) {
+        const { x: nx, y: ny } = path.pop();
+
+        if (level[nx][ny] === TILE_EMPTY) {
+          descriptor.position = { x: nx, y: ny };
+
+          render();
+
+          return;
+        }
+      }
+
+      const tmpLevel = [];
+
+      for (let row of level) {
+        tmpLevel.push(row.map(c => c !== TILE_EMPTY ? Number.MAX_VALUE : 0));
+      }
+
+      tmpLevel[px][py] = 1;
+
+      const checkedPositions = [];
+      const queue = [{ x: px, y: py }];
+      let maxSteps = 0;
+
+      while (queue.length > 0) {
+        const { x, y } = queue.pop();
+
+        checkedPositions.push({ x, y });
+
+        maxSteps = Math.max(tmpLevel[x][y], maxSteps);
+
+        if (x - 1 > -1 && tmpLevel[x - 1][y] === 0) {
+          tmpLevel[x - 1][y] = tmpLevel[x][y] + 1;
+          queue.unshift({ x: x - 1, y });
+        }
+
+        if (x + 1 < tmpLevel.length && tmpLevel[x + 1][y] === 0) {
+          tmpLevel[x + 1][y] = tmpLevel[x][y] + 1;
+          queue.unshift({ x: x + 1, y });
+        }
+
+        if (y - 1 > -1 && tmpLevel[x][y - 1] === 0) {
+          tmpLevel[x][y - 1] = tmpLevel[x][y] + 1;
+          queue.unshift({ x, y: y - 1 });
+        }
+
+        if (y + 1 < tmpLevel[0].length && tmpLevel[x][y + 1] === 0) {
+          tmpLevel[x][y + 1] = tmpLevel[x][y] + 1;
+          queue.unshift({ x, y: y + 1 });
+        }
+      }
+
+      const { x: dx, y: dy } = checkedPositions.find(({ x: x1, y: y1 }) => tmpLevel[x1][y1] === maxSteps);
+
+      const newPath = [{ x: dx, y: dy }];
+      let currentPosition = {...newPath[newPath.length - 1]};
+
+      while (tmpLevel[currentPosition.x][currentPosition.y] > 1) {
+        const n = tmpLevel[currentPosition.x][currentPosition.y] - 1;
+
+        if (currentPosition.x - 1 > -1 && tmpLevel[currentPosition.x - 1][currentPosition.y] === n) {
+          newPath.push({ x: currentPosition.x - 1, y: currentPosition.y });
+        } else if (currentPosition.x + 1 < tmpLevel.length && tmpLevel[currentPosition.x + 1][currentPosition.y] === n) {
+          newPath.push({ x: currentPosition.x + 1, y: currentPosition.y });
+        } else if (currentPosition.y - 1 > -1 && tmpLevel[currentPosition.x][currentPosition.y - 1] === n) {
+          newPath.push({ x: currentPosition.x, y: currentPosition.y - 1 });
+        } else if (currentPosition.y + 1 < tmpLevel[0].length && tmpLevel[currentPosition.x][currentPosition.y + 1] === n) {
+          newPath.push({ x: currentPosition.x, y: currentPosition.y + 1 });
+        } else {
+          console.error('pathfinding error ¯\\_(ツ)_/¯')
+          break;
+        }
+
+        currentPosition = {...newPath[newPath.length - 1]};
+      }
+
+      // newPath.shift();
+      newPath.pop();
+
+      descriptor.destination = { x: dx, y: dy };
+      descriptor.path = newPath;
+    };
+
+    const updateBoar = (descriptor) => {
+      // always follows player; respects all walls
+    };
+
+    const updateBroom = (descriptor) => {
+      // picks random location and goes there; ignores brick walls
+    };
+
+    const ENEMY_AI_UPDATE = {
+      [ENEMY_LAMP]: updateLamp,
+      [ENEMY_BOAR]: updateBoar,
+      [ENEMY_BROOM]: updateBroom,
+    };
+
+    const createEnemy = (x, y, type) => {
+      const descriptor = { position: { x, y }, type };
+
+      const t1 = setInterval(ENEMY_AI_UPDATE[type].bind(null, descriptor), ENEMY_UPDATE_SPEED[type]);
+
+      descriptor.interval = t1;
+
+      enemies.add(descriptor);
+    };
 
     const generateLevel = (rows, cols) => {
       player.position = { x: 1, y: 1 };
@@ -122,11 +249,12 @@
       nextLevelDoor.x = -1;
       nextLevelDoor.y = -1;
 
-      const walls = Math.floor(emptySlots / 3) + (Math.floor(Math.random() * 100) % (emptySlots / 3));
+      const newWalls = Math.floor(emptySlots / 3) + (Math.floor(Math.random() * 100) % (emptySlots / 3));
+      const newEnemies = 1 + (Math.floor(Math.random() * 10) % 5);
 
       let filled = 0;
 
-      while (filled < walls) {
+      while (filled < newWalls) {
         const x = Math.floor(Math.random() * 100) % rows;
         const y = Math.floor(Math.random() * 100) % cols;
 
@@ -140,11 +268,19 @@
           continue;
         }
 
+        // generate a new enemy
+        if (enemies.size < newEnemies) {
+          createEnemy(x, y, ENEMY_TYPE[Math.floor(Math.random() * 100) % ENEMY_TYPE.length]);
+          continue;
+        }
+
+        // generate exit, if it does not exist yet
         if (nextLevelDoor.x === -1 || nextLevelDoor.y === -1) {
           nextLevelDoor.x = x;
           nextLevelDoor.y = y;
         }
 
+        // put the brick wall
         level[x][y] = TILE_BRICK_WALL;
         ++filled;
       }
@@ -310,12 +446,6 @@
       });
     };
 
-    const initAI = () => {
-      setInterval(updateAI, AI_UPDATE_INTERVAL);
-    };
-
-    const updateAI = () => {};
-
     const renderTile = (x, y, tile) => {
       const [ char, style ] = TILES[tile];
 
@@ -337,11 +467,14 @@
       }
 
       renderTile(player.position.x, player.position.y, TILE_PLAYER);
+
+      for (const { position: { x, y }, type } of enemies) {
+        renderTile(x, y, type);
+      }
     };
 
     generateLevel(LEVEL_ROWS, LEVEL_COLS);
     initInput();
-    initAI();
     render();
   </script>
 </body>
