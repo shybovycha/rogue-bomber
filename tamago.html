@@ -31,6 +31,8 @@
     const ENEMY_BOAR = Symbol('b');
     const ENEMY_BROOM = Symbol('B');
 
+    const INVINCIBLE_PLAYER = Symbol('i@i');
+
     const ENEMY_TYPE = [ ENEMY_LAMP ]; //, ENEMY_BOAR, ENEMY_BROOM ];
 
     const TILES = {
@@ -45,6 +47,7 @@
       [ENEMY_LAMP]: ['l', '#fbc546'], // enemy: lamp
       [ENEMY_BOAR]: ['b', '#b05d13'], // enemy: boar
       [ENEMY_BROOM]: ['B', '#e8c129'], // enemy: broom
+      [INVINCIBLE_PLAYER]: ['@', '#c7eeea'],
     };
 
     const KEY_MOVE_RIGHT = 72; // h
@@ -57,7 +60,8 @@
     const BOMB_TICK_TIME = 4100;
     const EXPLOSION_DURATION = 600;
 
-    const AI_UPDATE_INTERVAL = 100;
+    const INVINCIBLE_TIMEOUT = 2000;
+    const INVINCIBLE_INTERVAL = 200;
 
     const LEVEL_ROWS = 15;
     const LEVEL_COLS = 11;
@@ -86,6 +90,7 @@
         speed: 1,
         bombs: 10,
         fires: 1,
+        invincible: false,
       },
     };
 
@@ -107,12 +112,37 @@
       [ENEMY_BROOM]: 400,
     };
 
+    const killPlayer = () => {
+      if (player.attributes.invincible === true) {
+        return;
+      }
+
+      player.attributes.hp--;
+
+      if (player.attributes.hp > 0) {
+        player.attributes.invincible = true;
+
+        const t1 = setInterval(() => {
+          renderTile(player.position.x, player.position.y, INVINCIBLE_PLAYER);
+        }, INVINCIBLE_INTERVAL);
+
+        setTimeout(() => {
+          player.attributes.invincible = false;
+          clearInterval(t1);
+        }, INVINCIBLE_TIMEOUT);
+      }
+    };
+
     const updateLamp = (descriptor) => {
       // selects random location and goes there; respects all walls
       const { position: { x: px, y: py }, destination, path } = descriptor;
 
       if (destination && (px !== destination.x || py !== destination.y) && path.length) {
         const { x: nx, y: ny } = path.pop();
+
+        if (player.position.x === px && player.position.y === py) {
+          killPlayer();
+        }
 
         if (level[nx][ny] === TILE_EMPTY) {
           descriptor.position = { x: nx, y: ny };
@@ -274,6 +304,11 @@
           continue;
         }
 
+        // do not create walls where enemy is
+        if (Array.from(enemies).find(({ position: { x: ex, y: ey } }) => x === ex && y === ey)) {
+          continue;
+        }
+
         // generate exit, if it does not exist yet
         if (nextLevelDoor.x === -1 || nextLevelDoor.y === -1) {
           nextLevelDoor.x = x;
@@ -292,6 +327,10 @@
 
       x += dx;
       y += dy;
+
+      if (Array.from(enemies).find(({ position: { x: ex, y: ey } }) => ex === x && ey === y)) {
+        killPlayer();
+      }
 
       const cell = level[x][y];
 
@@ -322,7 +361,7 @@
 
         explosionFires.push({ x: i, y });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[i][y]) || (player.position.x === i && player.position.y === y)) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[i][y])) {
           break;
         }
       }
@@ -334,7 +373,7 @@
 
         explosionFires.push({ x: i, y });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[i][y]) || (player.position.x === i && player.position.y === y)) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[i][y])) {
           break;
         }
       }
@@ -346,7 +385,7 @@
 
         explosionFires.push({ x, y: i });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[x][i]) || (player.position.x === x && player.position.y === i)) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[x][i])) {
           break;
         }
       }
@@ -358,7 +397,7 @@
 
         explosionFires.push({ x, y: i });
 
-        if (EXPLOSION_STOPPER_TILES.includes(level[x][i]) || (player.position.x === x && player.position.y === i)) {
+        if (EXPLOSION_STOPPER_TILES.includes(level[x][i])) {
           break;
         }
       }
@@ -366,6 +405,7 @@
       for (let { x: cx, y: cy } of explosionFires) {
         level[cx][cy] = TILE_EXPLOSION;
 
+        // kill enemy
         for (let enemyDescriptor of enemies) {
           const { position: { x: ex, y: ey }, interval } = enemyDescriptor;
 
@@ -373,6 +413,11 @@
             clearInterval(enemyDescriptor.interval);
             enemies.delete(enemyDescriptor);
           }
+        }
+
+        // kill player
+        if (player.position.x === cx && player.position.y === cy) {
+          killPlayer();
         }
 
         if (level[cx][cy] === TILE_BOMB1 || level[cx][cy] === TILE_BOMB2) {
@@ -468,7 +513,16 @@
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // renderLevel();
+      if (player.attributes.hp < 1) {
+        const fontSize = 14;
+        ctx.fillStyle = 'black';
+        ctx.font = `${fontSize}px arial`;
+        const text = 'GAME OVER';
+        const textWidth = ctx.measureText(text).width;
+        ctx.fillText(text, (width / 2) - (textWidth / 2), (height / 2) - (fontSize / 2));
+        return;
+      }
+
       for (let i = 0; i < level.length; ++i) {
         for (let t = 0; t < level[i].length; ++t) {
           renderTile(i, t, level[i][t]);
