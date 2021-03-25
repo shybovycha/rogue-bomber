@@ -14,7 +14,7 @@
 
     const ctx = canvas.getContext('2d');
 
-    const TILE_HEIGHT = 16;
+    const TILE_HEIGHT = 24;
     ctx.font = `${TILE_HEIGHT}px courier new`;
     const TILE_WIDTH = ctx.measureText('X').width;
 
@@ -80,8 +80,9 @@
     const width = (TILE_WIDTH + COL_PADDING) * LEVEL_COLS;
     const height = (TILE_HEIGHT + ROW_PADDING) * (LEVEL_ROWS + 1);
 
-    canvas.style.width = `${width * 2}px`;
-    canvas.style.height = `${height * 2}px`;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.style.overflow = 'hidden;'
 
     canvas.width = width;
     canvas.height = height;
